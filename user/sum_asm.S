@@ -3,6 +3,7 @@
 main:
     addi sp, sp, -32
     mv a0, sp
+    li a1, 32
     call gets
     mv t0, a0
     call strip_newline
@@ -28,7 +29,9 @@ main:
     lb t3, -1(a0)
     beq t3, t4, format_error
     call parse_first_number
-    j finish
+    addi sp, sp, 32
+    li a0, 0
+    call exit
 
 strip_newline:
     lb t1, 0(t0)
@@ -143,13 +146,6 @@ overflow_error:
     la a0, error_buffer_overflow
     call printf
     li a0, 1
-    call exit
-
-finish:
-    j exit_program
-
-exit_program:
-    li a0, 0
     call exit
 
 .section .rodata

@@ -3,7 +3,7 @@
 #include "kernel/fcntl.h"
 #include "kernel/stat.h"
 
-#define MAX_INPUT_SIZE 1024
+#define MAX_INPUT_SIZE 64
 
 int space_index(char *buf) {
   for (int i = 0; buf[i] != '\0'; i++) {
