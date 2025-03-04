@@ -12,7 +12,7 @@ int main(int argc, char *argv[]) {
   }
   int pid = fork();
   if (pid < 0) {
-    fprintf(2, "Не удалось создать процесс\n");
+    fprintf(2, "Не удалось создать fork\n");
     exit(1);
   }
   if (pid == 0) {

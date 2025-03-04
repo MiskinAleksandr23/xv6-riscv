@@ -9,12 +9,12 @@
 int main(int argc, char *argv[]) {
   int pipefd[2];
   if (pipe(pipefd) < 0) {
-    perror("pipe");
+    perror("Не удалось создать pipe\n");
     exit(1);
   }
   pid_t pid = fork();
   if (pid < 0) {
-    perror("fork");
+    perror("Не удалось создать fork\n");
     exit(1);
   }
   if (pid == 0) {
@@ -26,7 +26,7 @@ int main(int argc, char *argv[]) {
       while (total_wr < read_b) {
         int written_b = write(1, buffer + total_wr, read_b - total_wr);
         if (written_b < 0) {
-          perror("write");
+          perror("Ошибка записи");
           close(pipefd[0]);
           exit(1);
         }
@@ -34,12 +34,12 @@ int main(int argc, char *argv[]) {
       }
     }
     if (read_b < 0) {
-      perror("read");
+      perror("Ошибка чтения");
       close(pipefd[0]);
       exit(1);
     }
     if (close(pipefd[0]) < 0) {
-      perror("close");
+      perror("Ошибка закрытия");
       exit(1);
     }
     fflush(stdout);
@@ -53,7 +53,7 @@ int main(int argc, char *argv[]) {
       while (total_wr < len) {
         int written_b = write(pipefd[1], argv[i] + total_wr, len - total_wr);
         if (written_b < 0) {
-          perror("write");
+          perror("Ошибка записи");
           close(pipefd[1]);
           exit(1);
         }
@@ -63,7 +63,7 @@ int main(int argc, char *argv[]) {
       while (total_wr < 1) {
         int written_b = write(pipefd[1], "\n", 1);
         if (written_b < 0) {
-          perror("write newline");
+          perror("Ошибка записи новой строки");
           close(pipefd[1]);
           exit(1);
         }
@@ -71,12 +71,12 @@ int main(int argc, char *argv[]) {
       }
     }
     if (close(pipefd[1]) < 0) {
-      perror("close");
+      perror("Ошибка закрытия");
       exit(1);
     }
     int status;
     if (wait(&status) < 0) {
-      perror("wait");
+      perror("Ошибка wait\n");
       exit(1);
     }
     exit(0);
