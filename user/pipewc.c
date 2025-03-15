@@ -17,12 +17,18 @@ int main(int argc, char *argv[]) {
   }
   if (pid == 0) {
     close(pipefd[1]);
-    close(0);
+    if (close(0) < 0) {
+      fprintf(2, "Ошибка закрытия стандартного ввода в дочернем процессе\n");
+      exit(1);
+    }
     if (dup(pipefd[0]) < 0) {
       fprintf(2, "Ошибка dup\n");
       exit(1);
     }
-    close(pipefd[0]);
+    if (close(pipefd[0]) < 0) {
+      fprintf(2, "Ошибка закрытия pipefd[0] в дочернем процессе\n");
+      exit(1);
+    }
     char *wc_args[] = {"wc", 0};
     exec("wc", wc_args);
     fprintf(2, "Ошибка exec\n");
@@ -31,11 +37,19 @@ int main(int argc, char *argv[]) {
     close(pipefd[0]);
     char buf[BUF_SIZE];
     int len = 0;
-    // тут не понял, мб надо было с первого(а не нулевого).
     for (int i = 0; i < argc; i++) {
       const int a_len = strlen(argv[i]);
       if (len + a_len + 1 >= BUF_SIZE) {
-        write(pipefd[1], buf, len);
+        int total_written = 0;
+        while (total_written < len) {
+          int written = write(pipefd[1], buf + total_written, len - total_written);
+          if (written < 0) {
+            fprintf(2, "Ошибка записи в pipe при переполнении буфера\n");
+            close(pipefd[1]);
+            exit(1);
+          }
+          total_written += written;
+        }
         len = 0;
       }
       memcpy(buf + len, argv[i], a_len);
@@ -44,7 +58,16 @@ int main(int argc, char *argv[]) {
       len++;
     }
     if (len > 0) {
-      write(pipefd[1], buf, len);
+      int total_written = 0;
+      while (total_written < len) {
+        int written = write(pipefd[1], buf + total_written, len - total_written);
+        if (written < 0) {
+          fprintf(2, "Ошибка записи в pipe при завершении\n");
+          close(pipefd[1]);
+          exit(1);
+        }
+        total_written += written;
+      }
     }
     close(pipefd[1]);
     int status;
