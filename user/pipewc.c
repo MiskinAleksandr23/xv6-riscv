@@ -4,6 +4,7 @@
 
 #define BUF_SIZE 512
 
+
 int main(int argc, char *argv[]) {
   int pipefd[2];
   if (pipe(pipefd) < 0) {
