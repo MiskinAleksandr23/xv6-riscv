@@ -20,8 +20,8 @@ const char* procinfo_state_to_str(enum procinfo_state state) {
 };
 
 int main() {
-  int ret;
-  int bufsize = 16;
+  int ret = 0;
+  int bufsize = 2;
   struct procinfo *plist;
   while(1) {
     plist = malloc(sizeof(struct procinfo) * bufsize);
@@ -39,7 +39,12 @@ int main() {
        fprintf(1, "Некорректный адресс буфера = %d\n", ret);
        free(plist);
        exit(1);
-    } break;
+    } else if (ret < 0) {
+      fprintf(1, "Неизвестная ошибка");
+      free(plist);
+      exit(1);
+    }
+    break;
   }
   printf("PID\tNAME\t\tSTATE\t\tPPID\tPNAME\n");
   for (int i = 0; i < ret; i++) {
