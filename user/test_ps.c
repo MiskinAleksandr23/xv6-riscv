@@ -19,15 +19,15 @@ main(void)
         if(ret < 0)
             printf("Буфер слишком маленький: %d\n", ret);
         else
-            printf("Ожидалась ошибка, но получено %d\n", ret);
+            printf("Ожидалась ошибка, но не была получена. Код ошибки:  %d\n", ret);
         free(buf);
     }
 
     // недопустимый адрес, просто очень большой
     ret = ps_listinfo((struct procinfo *)0xFFFFFFFF, count);
     if(ret < 0)
-        printf("Неверный адресс %d\n", ret);
+        printf("Неверный адрес %d\n", ret);
     else
-        printf("Ожидалась ошибка, но получено %d\n", ret);
+        printf("Ожидалась ошибка, но не была получена. Код ошибки: %d\n", ret);
     exit(0);
 }

@@ -36,7 +36,7 @@ int main() {
       bufsize *= 2;
       continue;
     } else if (ret == -2) {
-       fprintf(1, "Некорректный адресс буфера = %d\n", ret);
+       fprintf(1, "Некорректный адрес буфера = %d\n", ret);
        free(plist);
        exit(1);
     } else if (ret < 0) {
