@@ -4,6 +4,7 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "procinfo.h"
 #include "defs.h"
 
 struct cpu cpus[NCPU];
@@ -693,3 +694,54 @@ procdump(void)
     printf("\n");
   }
 }
+
+int ps_listinfo (struct procinfo *plist, int lim) {
+  struct proc *p;
+  struct procinfo pi;
+  int count = 0;
+
+  for (p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if (p->state == UNUSED || p->state == USED) {
+      release(&p->lock);
+      continue;
+    }
+    ++count;
+    if (!plist) {
+      release(&p->lock);
+      continue;
+    }
+    if (count > lim) {
+      release(&p->lock);
+      return -1;
+    }
+    pi.pid = p->pid;
+
+    if (p->state == SLEEPING) pi.state = PROC_SLEEPING;
+    if (p->state == RUNNABLE) pi.state = PROC_RUNNABLE;
+    if (p->state == RUNNING) pi.state = PROC_RUNNING;
+    if (p->state == ZOMBIE) pi.state = PROC_ZOMBIE;
+
+    strncpy(pi.proc_name, p->name, sizeof(pi.proc_name));
+
+    acquire(&wait_lock);
+
+    if (p->parent) {
+      strncpy(pi.parent_name, p->parent->name, sizeof(pi.parent_name));
+      pi.parent_pid = p->parent->pid;
+    } else {
+      pi.parent_pid = 0;
+      pi.parent_name[0] = '\0';
+    }
+
+    release(&wait_lock);
+
+    if (copyout(myproc()->pagetable, (uint64)& plist[count-1],
+                (char *)&pi, sizeof(pi)) < 0) {
+      release(&p->lock);
+      return -2;
+    }
+    release(&p->lock);
+  }
+  return count;
+};
