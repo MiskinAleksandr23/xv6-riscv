@@ -4,6 +4,7 @@
 #include "riscv.h"
 #include "spinlock.h"
 #include "proc.h"
+#include "procinfo.h"
 #include "defs.h"
 
 struct cpu cpus[NCPU];
@@ -33,7 +34,7 @@ void
 proc_mapstacks(pagetable_t kpgtbl)
 {
   struct proc *p;
-  
+
   for(p = proc; p < &proc[NPROC]; p++) {
     char *pa = kalloc();
     if(pa == 0)
@@ -48,7 +49,7 @@ void
 procinit(void)
 {
   struct proc *p;
-  
+
   initlock(&pid_lock, "nextpid");
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
@@ -93,7 +94,7 @@ int
 allocpid()
 {
   int pid;
-  
+
   acquire(&pid_lock);
   pid = nextpid;
   nextpid = nextpid + 1;
@@ -236,7 +237,7 @@ userinit(void)
 
   p = allocproc();
   initproc = p;
-  
+
   // allocate one user page and copy initcode's instructions
   // and data into it.
   uvmfirst(p->pagetable, initcode, sizeof(initcode));
@@ -372,7 +373,7 @@ exit(int status)
 
   // Parent might be sleeping in wait().
   wakeup(p->parent);
-  
+
   acquire(&p->lock);
 
   p->xstate = status;
@@ -428,7 +429,7 @@ wait(uint64 addr)
       release(&wait_lock);
       return -1;
     }
-    
+
     // Wait for a child to exit.
     sleep(p, &wait_lock);  //DOC: wait-sleep
   }
@@ -548,7 +549,7 @@ void
 sleep(void *chan, struct spinlock *lk)
 {
   struct proc *p = myproc();
-  
+
   // Must acquire p->lock in order to
   // change p->state and then call sched.
   // Once we hold p->lock, we can be
@@ -627,7 +628,7 @@ int
 killed(struct proc *p)
 {
   int k;
-  
+
   acquire(&p->lock);
   k = p->killed;
   release(&p->lock);
@@ -693,3 +694,56 @@ procdump(void)
     printf("\n");
   }
 }
+
+int ps_listinfo (struct procinfo *plist, int lim) {
+  struct proc *p;
+  struct procinfo pi;
+  int count = 0;
+
+  for (p = proc; p < &proc[NPROC]; p++){
+    acquire(&p->lock);
+    if (p->state == UNUSED || p->state == USED) {
+      release(&p->lock);
+      continue;
+    }
+    ++count;
+    if (!plist) {
+      release(&p->lock);
+      continue;
+    }
+    if (count > lim) {
+      release(&p->lock);
+      return -1;
+    }
+    pi.pid = p->pid;
+
+    if (p->state == SLEEPING) pi.state = PROC_SLEEPING;
+    if (p->state == RUNNABLE) pi.state = PROC_RUNNABLE;
+    if (p->state == RUNNING) pi.state = PROC_RUNNING;
+    if (p->state == ZOMBIE) pi.state = PROC_ZOMBIE;
+
+    strncpy(pi.proc_name, p->name, sizeof(pi.proc_name));
+
+    acquire(&wait_lock);
+
+    if (p->parent) {
+      acquire(&p->parent->lock);
+      strncpy(pi.parent_name, p->parent->name, sizeof(pi.parent_name));
+      pi.parent_pid = p->parent->pid;
+      release(&p->parent->lock);
+    } else {
+      pi.parent_pid = 0;
+      pi.parent_name[0] = '\0';
+    }
+
+    release(&wait_lock);
+
+    if (copyout(myproc()->pagetable, (uint64)& plist[count-1],
+                (char *)&pi, sizeof(pi)) < 0) {
+      release(&p->lock);
+      return -2;
+    }
+    release(&p->lock);
+  }
+  return count;
+};
