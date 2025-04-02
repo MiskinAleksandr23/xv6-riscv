@@ -37,6 +37,9 @@ void* memset(void*, int, uint);
 int atoi(const char*);
 int memcmp(const void *, const void *, uint);
 void *memcpy(void *, const void *, uint);
+int print_pages(char*, int, int);
+int clear_flags(char*, int, int);
+
 
 // umalloc.c
 void* malloc(uint);
