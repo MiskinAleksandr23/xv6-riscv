@@ -14,8 +14,10 @@ int main(int argc, char *argv[]) {
     print_pages(0, 0, 0);
 
     printf("\nТаблица страниц после работы со стековой переменной (var):\n");
-    char var = 55;
-    print_pages(&var, 1, 2);
+    char var1 = 50;
+    print_pages(&var1, 1, 2);
+    char var2 = 100;
+    print_pages(&var2, 1, 2);
 
     printf("\nТаблица страниц после работы с массивом на стеке (stack_array):\n");
     char stack_array[SIZE];
