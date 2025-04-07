@@ -8,12 +8,18 @@ void print_chars(int argc, char *argv[], int use_mutex, int mutex_id) {
 
     for (int i = 1; i < argc; i++) {
         for (int j = 0; argv[i][j]; j++) {
-            if (use_mutex) mutex_lock(mutex_id);
+            if (use_mutex && mutex_lock(mutex_id) < 0) {
+                fprintf(2, "Lock failed\n");
+                exit(1);
+            }
 
             ch[0] = argv[i][j];
             printf("%d: arg %d, char '%s'\n", getpid(), i, ch);
 
-            if (use_mutex) mutex_unlock(mutex_id);
+            if (use_mutex && mutex_unlock(mutex_id) < 0) {
+                fprintf(2, "Unlock failed\n");
+                exit(1);
+            }
         }
     }
 }

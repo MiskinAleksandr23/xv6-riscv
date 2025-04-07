@@ -56,8 +56,10 @@ void test_foreign_close() {
         exit(0);
     }
 
-    sleep(20);
-    mutex_unlock(fd);
+    sleep(2);
+    if (mutex_unlock(fd) < 0) {
+        fprintf(2, "Unlock failed\n");
+    }
     printf(close(fd) < 0 ? "Parent close failed\n" : "Parent closed ok\n");
     wait(0);
 }
@@ -70,7 +72,10 @@ void test_exit_lock() {
     }
     if (pid == 0) {
         int fd = mutex();
-        mutex_lock(fd);
+        if (mutex_lock(fd) < 0) {
+            fprintf(2, "Child lock failed\n");
+            exit(1);
+        }
         printf("Child exit locked\n");
         exit(0);
     }
@@ -80,7 +85,10 @@ void test_exit_lock() {
 
 void test_foreign_unlock() {
     int fd = mutex();
-    mutex_lock(fd);
+    if (mutex_lock(fd) < 0) {
+        fprintf(2, "Parent lock failed\n");
+        exit(1);
+    }
     int pid = fork();
 
     if (pid == 0) {
@@ -88,8 +96,10 @@ void test_foreign_unlock() {
         exit(0);
     }
 
-    sleep(20);
-    mutex_unlock(fd);
+    sleep(2);
+    if (mutex_unlock(fd) < 0) {
+        fprintf(2, "Unlock failed\n");
+    }
     close(fd);
     wait(0);
 }

@@ -23,7 +23,8 @@ mutexalloc(void)
         printf("Process pid %d: file allocated at 0x%lx\n", myproc()->pid, (uint64)f);
 
     f->type = FD_MUTEX;
-
+    f->readable = 0;
+    f->writable = 0;
     f->mutex = (struct sleeplock *)kalloc();
     if (!f->mutex) {
         fileclose(f);
@@ -49,8 +50,11 @@ mutexclose(struct file *f)
         return;
     }
 
-    if (f->mutex->locked && f->mutex->pid == myproc()->pid)
-        releasesleep(f->mutex);
+    int p;
+    acquire(&f->mutex->lk);
+    p = f->mutex->locked && f->mutex->pid == myproc()->pid;
+    release(&f->mutex->lk);
+    if (p) releasesleep(f->mutex);
 
     if (LOG_ENABLED)
         printf("Process pid %d: releasing mutex at 0x%lx for file at 0x%lx\n",

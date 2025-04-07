@@ -66,6 +66,13 @@ fileclose(struct file *f)
     panic("fileclose");
   if(--f->ref > 0){
     release(&ftable.lock);
+    if (f == 0 || f->type != FD_MUTEX) 
+      return;
+    int p;
+    acquire(&f->mutex->lk);
+    p = f->mutex->locked && f->mutex->pid == myproc()->pid;
+    release(&f->mutex->lk);
+    if (p) releasesleep(f->mutex);
     return;
   }
   ff = *f;
