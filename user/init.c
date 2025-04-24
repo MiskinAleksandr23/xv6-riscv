@@ -22,6 +22,11 @@ main(void)
   }
   dup(0);  // stdout
   dup(0);  // stderr
+  mkdir("/dev");
+  mknod("/dev/null", DEV_PSEUDO, 0);
+  mknod("/dev/zero", DEV_PSEUDO, 1);
+  mknod("/dev/urandom", DEV_PSEUDO, 2);
+  mknod("/dev/nullstat", DEV_PSEUDO, 3);
 
   for(;;){
     printf("init: starting sh\n");
