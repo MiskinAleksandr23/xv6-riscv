@@ -17,7 +17,7 @@
 #define BUF_SIZE 1024
 #define COUNT_SECONDS 10
 
-volatile sig_atomic_t sig_term, sig_int, sig_quit, sig_alrm, sig_usr1, sig_hup;
+volatile sig_atomic_t sig_term, sig_int, sig_alrm, sig_usr1, sig_hup;
 
 typedef struct {
     uint64_t count_messages;
@@ -30,12 +30,11 @@ FILE *f = NULL;
 int fifo = -1;
 
 
-void sig_term_handler(int signo) { sig_term = 1; }
-void sig_int_handler(int signo)  { sig_int = 1; }
-void sig_quit_handler(int signo) { sig_quit = 1; }
-void sig_alrm_handler(int signo) { sig_alrm = 1; }
-void sig_usr1_handler(int signo) { sig_usr1 = 1; }
-void sig_hup_handler(int signo)  { sig_hup = 1; }
+void sig_term_handler(int signo) { (void)(signo); sig_term = 1; }
+void sig_int_handler(int signo)  { (void)(signo); sig_int = 1; }
+void sig_alrm_handler(int signo) { (void)(signo); sig_alrm = 1; }
+void sig_usr1_handler(int signo) { (void)(signo); sig_usr1 = 1; }
+void sig_hup_handler(int signo)  { (void)(signo); sig_hup = 1; }
 
 void set_signals() {
     struct sigaction sa;
@@ -89,7 +88,9 @@ void print_stats() {
 
 void clean_up() {
     if (fifo != -1) {
-        close(fifo);
+        if (close(fifo) == -1) {  
+            perror("close fifo failed");
+        }
         fifo = -1;
     }
 
@@ -105,6 +106,10 @@ void clean_up() {
 }
 
 void demonize_process(bool immediately) {
+    if (f && f != stdout) {  
+        fclose(f);
+        f = NULL;
+    }
     if (immediately) {
         daemon(1, 0);
     } else {
@@ -155,6 +160,10 @@ void eintr_error() {
     }
     if (sig_hup) {
         sig_hup = 0;
+        if (f && f != stdout) { 
+            fclose(f);
+            f = NULL;
+        }
         demonize_process(false);
         fprintf(f, "Received SIGHUP: switched to daemon mode\n");
         print_stats();
@@ -210,6 +219,7 @@ int main(int argc, char **argv) {
                 continue;
             }
             perror("open failed");
+            if (fifo != -1)  close(fifo);
             exit(EXIT_FAILURE);
         }
 
@@ -240,8 +250,7 @@ int main(int argc, char **argv) {
                 fputs(buffer, f);
                 fflush(f);
                 stats.len_messages += n;
-                stats.count_messages++;
-            }
+            }  stats.count_messages++;
         }
 
         close(fifo);
