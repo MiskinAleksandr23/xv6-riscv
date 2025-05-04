@@ -15,6 +15,9 @@
 #define A 1337
 #define B 11
 
+#define SIZE 512
+char zeros[SIZE];
+
 
 struct pseudo {
   struct spinlock lock;
@@ -30,7 +33,6 @@ uint8 gen_u8() {
 }
 
 int pseudo_read(int user_dst, uint64 dst, int len, short minor) {
-  acquire(&pseudo_dev.lock);
 
   int result = -1;
 
@@ -38,43 +40,41 @@ int pseudo_read(int user_dst, uint64 dst, int len, short minor) {
     result = 0;
   }
   else if (minor == ZERO) {
-    int has_error = 0;
-    for (int i = 0; i < len; i++) {
-      int value = 0;
-      if (either_copyout(user_dst, dst + i, &value, 1) < 0) {
-        has_error = 1;
-        break;
-      }
-    } if (!has_error) {
+    int has_error = either_copyout(user_dst, dst, &zeros, len);
+    if (!has_error) {
       result = len;
     }
   }
   else if (minor == URANDOM) {
+    acquire(&pseudo_dev.lock);
     int has_error = 0;
     for (int i = 0; i < len; i++) {
       uint8 value = gen_u8();
       if (either_copyout(user_dst, dst + i, &value, 1) < 0) { 
         has_error = 1;
+        release(&pseudo_dev.lock);
         break;
       }
     }
     if (!has_error) {
       result = len;
+      release(&pseudo_dev.lock);
     }
   }
   else if (minor == NULLSTAT) {
+    acquire(&pseudo_dev.lock);
     if (len != sizeof(uint64) || either_copyout(user_dst, dst, &pseudo_dev.count, len) < 0) {
+      release(&pseudo_dev.lock);
       result = -1;
     } else {
+      release(&pseudo_dev.lock);
       result = len;
     }
   }
-  release(&pseudo_dev.lock);
   return result;
 }
 int pseudo_write(int user_src, uint64 src, int len, short minor) {
   int result = -1;
-  acquire(&pseudo_dev.lock);
 
 
   if (minor == NULL) {
@@ -87,23 +87,27 @@ int pseudo_write(int user_src, uint64 src, int len, short minor) {
     if (len == sizeof(uint64)) {
       uint64 new_seed = 0;
       if (either_copyin(&new_seed, user_src, src, len) >= 0) {
+        acquire(&pseudo_dev.lock);
         pseudo_dev.seed = new_seed;
+        release(&pseudo_dev.lock);
         result = len;
       }
     }
   }
   else if (minor == NULLSTAT) {
+    acquire(&pseudo_dev.lock);
     pseudo_dev.count += len;
+    release(&pseudo_dev.lock);
     result = len;
   }
 
-  release(&pseudo_dev.lock);
   return result;
 }
 
 
 void pseudo_init(void) {
   initlock(&pseudo_dev.lock, "dev");
+  for (int i = 0; i < SIZE; i++) zeros[i] = 0;
   pseudo_dev.seed = A;
   pseudo_dev.count = 0;
   devsw[DEV_PSEUDO].read = pseudo_read;
