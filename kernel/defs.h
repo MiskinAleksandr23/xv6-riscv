@@ -182,6 +182,7 @@ void            plic_complete(int);
 
 
 // rtc.c
+void            rtcinit(void);
 uint32          rtc_low(void);
 uint32          rtc_high(void);
 uint64          rtc_read(void);
