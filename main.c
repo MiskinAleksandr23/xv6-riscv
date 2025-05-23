@@ -11,7 +11,7 @@
 #include <stdbool.h>
 
 uint64_t file_size;
-FILE* file_system;
+FILE *file_system;
 uint32_t block_size;
 
 #define SUPER_SIZE 1024
@@ -76,19 +76,24 @@ typedef struct {
   char i_osd2[12];
 } __attribute__((packed)) ext2_inode_t;
 
-void cleanup_failure(FILE* fs, uint8_t* buffer) {
-  if (fs) fclose(fs);
-  if (buffer) free(buffer);
+void cleanup_failure(FILE * fs, uint8_t * buffer)
+{
+  if (fs)
+    fclose(fs);
+  if (buffer)
+    free(buffer);
   exit(EXIT_FAILURE);
 }
 
-static int transfer_block_data(FILE *fs_image, uint32_t block_num,
-                            uint32_t block_size, uint64_t *remaining_bytes) {
+static int transfer_block_data(FILE * fs_image, uint32_t block_num,
+                               uint32_t block_size,
+                               uint64_t * remaining_bytes)
+{
   if (block_num == 0 || *remaining_bytes == 0) {
     return 0;
   }
 
-  const off_t offset = (off_t)block_num * block_size;
+  const off_t offset = (off_t) block_num * block_size;
   if (fseeko(fs_image, offset, SEEK_SET) != 0) {
     perror("Filesystem seek error");
     fclose(fs_image);
@@ -96,8 +101,7 @@ static int transfer_block_data(FILE *fs_image, uint32_t block_num,
   }
 
   const size_t transfer_size = (*remaining_bytes > block_size)
-                              ? block_size
-                              : (size_t)*remaining_bytes;
+      ? block_size : (size_t) *remaining_bytes;
   uint8_t data_buffer[block_size];
 
   if (fread(data_buffer, 1, transfer_size, fs_image) != transfer_size) {
@@ -113,12 +117,14 @@ static int transfer_block_data(FILE *fs_image, uint32_t block_num,
   return 0;
 }
 
-void direct_block(uint32_t block_pointer) {
-  if (file_size <= 0) return;
+void direct_block(uint32_t block_pointer)
+{
+  if (file_size <= 0)
+    return;
 
   size_t output_bytes = file_size < block_size ? file_size : block_size;
 
-  uint8_t* block_data = malloc(output_bytes);
+  uint8_t *block_data = malloc(output_bytes);
 
   if (!block_data) {
     perror("malloc failed");
@@ -128,7 +134,8 @@ void direct_block(uint32_t block_pointer) {
   if (block_pointer == 0) {
     memset(block_data, 0, output_bytes);
   } else {
-    if (fseek(file_system, (long) block_pointer * block_size, SEEK_SET) != 0) {
+    if (fseek(file_system, (long) block_pointer * block_size, SEEK_SET) !=
+        0) {
       perror("fseek failed");
       cleanup_failure(file_system, block_data);
     }
@@ -145,62 +152,76 @@ void direct_block(uint32_t block_pointer) {
   free(block_data);
 }
 
-int write_zeros(uint32_t block_size, uint64_t* bytes_remaining) {
-  uint32_t to_write = *bytes_remaining > block_size ? block_size : *bytes_remaining;
+int write_zeros(uint32_t block_size, uint64_t * bytes_remaining)
+{
+  uint32_t to_write =
+      *bytes_remaining > block_size ? block_size : *bytes_remaining;
   char zero_block[block_size];
   memset(zero_block, 0, block_size);
 
   if (fwrite(zero_block, 1, to_write, stdout) < to_write) {
-      perror("writing block");
-      return -1;
+    perror("writing block");
+    return -1;
   }
   *bytes_remaining -= to_write;
   return 0;
 }
 
-static int process_indirect(FILE *file, uint32_t block_ptr, int level, uint32_t blk_size, uint64_t *remaining) {
-    if (!*remaining) return 0;
-
-    uint32_t entries = blk_size / 4;
-    uint32_t total_blocks = entries;
-
-    if (!block_ptr) {
-        for (int i = 1; i < level; i++) total_blocks *= entries;
-        for (uint32_t i = 0; i < total_blocks && *remaining; i++) {
-            if (write_zeros(blk_size, remaining) < 0) return -1;
-        }
-        return 0;
-    }
-
-    uint32_t block_table[entries];
-
-    if (fseek(file, block_ptr * blk_size, SEEK_SET)) {
-        perror("seek failed");
-        fclose(file);
-        return -1;
-    }
-
-    if (fread(block_table, 4, entries, file) != entries) {
-        perror("read failed");
-        return -1;
-    }
-
-    for (uint32_t i = 0; i < entries && *remaining; i++) {
-        if (level == 1) {
-            if (block_table[i]) {
-                if (transfer_block_data(file, block_table[i], blk_size, remaining) < 0) return -1;
-            } else {
-                if (write_zeros(blk_size, remaining) < 0) return -1;
-            }
-        } else {
-            if (process_indirect(file, block_table[i], level - 1, blk_size, remaining) < 0) return -1;
-        }
-    }
-
+static int process_indirect(FILE * file, uint32_t block_ptr, int level,
+                            uint32_t blk_size, uint64_t * remaining)
+{
+  if (!*remaining)
     return 0;
+
+  uint32_t entries = blk_size / 4;
+  uint32_t total_blocks = entries;
+
+  if (!block_ptr) {
+    for (int i = 1; i < level; i++)
+      total_blocks *= entries;
+    for (uint32_t i = 0; i < total_blocks && *remaining; i++) {
+      if (write_zeros(blk_size, remaining) < 0)
+        return -1;
+    }
+    return 0;
+  }
+
+  uint32_t block_table[entries];
+
+  if (fseek(file, block_ptr * blk_size, SEEK_SET)) {
+    perror("seek failed");
+    fclose(file);
+    return -1;
+  }
+
+  if (fread(block_table, 4, entries, file) != entries) {
+    perror("read failed");
+    return -1;
+  }
+
+  for (uint32_t i = 0; i < entries && *remaining; i++) {
+    if (level == 1) {
+      if (block_table[i]) {
+        if (transfer_block_data(file, block_table[i], blk_size, remaining)
+            < 0)
+          return -1;
+      } else {
+        if (write_zeros(blk_size, remaining) < 0)
+          return -1;
+      }
+    } else {
+      if (process_indirect
+          (file, block_table[i], level - 1, blk_size, remaining) < 0)
+        return -1;
+    }
+  }
+
+  return 0;
 }
 
-int read_inode_data(FILE* f, uint64_t size, ext2_inode_t inode, uint32_t block_size) {
+int read_inode_data(FILE * f, uint64_t size, ext2_inode_t inode,
+                    uint32_t block_size)
+{
   uint64_t rem = size;
 
   for (int i = 0; i < 12 && rem > 0; i++) {
@@ -217,7 +238,8 @@ int read_inode_data(FILE* f, uint64_t size, ext2_inode_t inode, uint32_t block_s
   return 0;
 }
 
-void convert_sb(ext2_superblock_t *sb) {
+static int check_sb(ext2_superblock_t * sb)
+{
   sb->s_inodes_count = le32toh(sb->s_inodes_count);
   sb->s_blocks_count = le32toh(sb->s_blocks_count);
   sb->s_first_data_block = le32toh(sb->s_first_data_block);
@@ -227,159 +249,88 @@ void convert_sb(ext2_superblock_t *sb) {
   sb->s_magic = le16toh(sb->s_magic);
   sb->s_inode_size = le16toh(sb->s_inode_size);
   sb->s_rev_level = le32toh(sb->s_rev_level);
+
+  return sb->s_magic == EXT2_SUPER_MAGIC ? 0 : -1;
 }
 
-int main(int argc, char** argv) {
+static uint64_t get_size(const ext2_superblock_t * sb,
+                         const ext2_inode_t * inode)
+{
+  uint64_t size = le32toh(inode->i_size);
+  if ((sb->s_feature_incompat & 0x0002)
+      && (inode->i_mode & 0xF000) == 0x8000) {
+    size |= (uint64_t) le32toh(inode->i_dir_acl) << 32;
+  }
+  return size;
+}
+
+int main(int argc, char **argv)
+{
   if (argc != 3) {
-    perror("format must be: <filesystem> <inode>\n");
-    exit(EXIT_FAILURE);
-  }
-  int inode = atoi(argv[2]);
-  file_system = fopen(argv[1], "rb");
-  if (!file_system) {
-    perror("fopen error");
-    exit(EXIT_FAILURE);
+    fprintf(stderr, "Usage: %s <image> <inode>\n", argv[0]);
+    return 1;
   }
 
-  if (fseek(file_system, EXT2_SUPERBLOCK_OFFSET, SEEK_SET) != 0) {
-      perror("error: fseek superblock");
-      fclose(file_system);
-      return 1;
+  FILE *f = fopen(argv[1], "rb");
+  if (!f) {
+    perror("fopen");
+    return 1;
   }
+
   ext2_superblock_t sb;
-  if (fread(&sb, sizeof(ext2_superblock_t), 1, file_system) != 1) {
-      perror("error: fread superblock");
-      fclose(file_system);
-      return 1;
+  if (fseek(f, EXT2_SUPERBLOCK_OFFSET, SEEK_SET) ||
+      fread(&sb, sizeof(sb), 1, f) != 1) {
+    perror("superblock");
+    fclose(f);
+    return 1;
   }
 
-  convert_sb(&sb);
-
-  log_block_size = le32toh(log_block_size);
-  block_size = 1024 << log_block_size;
-  uint32_t descriptor_table = (block_size == 1024) ? 2 : 1;
-
-  if (fseek(file_system, SUPER_SIZE + 32, SEEK_SET) != 0) {
-    perror("fseek failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  if (fread(&blocks_per_group, 4, 1, file_system) != 1) {
-    perror("fread failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  blocks_per_group = le32toh(blocks_per_group);
-
-  if (fseek(file_system, SUPER_SIZE + 40, SEEK_SET) != 0) {
-    perror("fseek failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  if (fread(&inode_per_group, 4, 1, file_system) != 1) {
-    perror("fread failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  inode_per_group = le32toh(inode_per_group);
-
-  if (fseek(file_system, SUPER_SIZE + 88, SEEK_SET) != 0) {
-    perror("fseek failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  if (fread(&inode_size, 4, 1, file_system) != 1) {
-    perror("fread failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  inode_size = le32toh(inode_size);
-
-  uint32_t inode_group = (inode - 1) / inode_per_group;
-
-  if (fseek(file_system, descriptor_table * block_size + inode_group * 32, SEEK_SET) != 0) {
-    perror("fseek failed");
-    fclose(file_system);
-    exit(1);
+  if (check_sb(&sb) != 0) {
+    fputs("Not ext2\n", stderr);
+    fclose(f);
+    return 1;
   }
 
-  uint32_t addr_inode_table;
-  if (fseek(file_system, 8, SEEK_CUR) != 0) {
-    perror("fseek failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  if (fread(&addr_inode_table, 4, 1, file_system) != 1) {
-    perror("fread failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  addr_inode_table = le32toh(addr_inode_table);
+  uint32_t blk_size = EXT2_BLOCK_SIZE << sb.s_log_block_size;
+  uint32_t blk_groups =
+      (sb.s_blocks_count + sb.s_blocks_per_group -
+       1) / sb.s_blocks_per_group;
+  uint32_t inode = atoi(argv[2]);
+  uint32_t inode_grp = (inode - 1) / sb.s_inodes_per_group;
 
-  uint32_t inode_index_in_group = (inode - 1) % inode_per_group;
-  uint32_t inode_offset = addr_inode_table * block_size + inode_index_in_group * inode_size;
-
-  if (fseek(file_system, inode_offset, SEEK_SET) != 0) {
-    perror("fseek to inode failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
+  if (inode_grp >= blk_groups) {
+    fputs("Bad inode\n", stderr);
+    fclose(f);
+    return 1;
   }
 
-  uint32_t lower_bits;
-  if (fseek(file_system, 4, SEEK_CUR) != 0) {
-    perror("fseek to inode failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  if (fread(&lower_bits, 4, 1, file_system) != 1) {
-    perror("fread failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
+  uint32_t bgdt_blk = (blk_size == 1024) ? 2 : 1;
+  ext2_bg_desc_t bg;
+  if (fseek(f, bgdt_blk * blk_size + inode_grp * sizeof(bg), SEEK_SET) ||
+      fread(&bg, sizeof(bg), 1, f) != 1) {
+    perror("bgdt");
+    fclose(f);
+    return 1;
   }
 
-  uint32_t upper_bits;
-  if (fseek(file_system, 104, SEEK_CUR) != 0) {
-    perror("fseek to inode failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  if (fread(&upper_bits, 4, 1, file_system) != 1) {
-    perror("fread failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
-  }
-  lower_bits = le32toh(lower_bits);
-  upper_bits = le32toh(upper_bits);
+  uint32_t inode_sz = sb.s_rev_level ? sb.s_inode_size : 128;
+  uint32_t inode_off = le32toh(bg.bg_inode_table) * blk_size +
+      ((inode - 1) % sb.s_inodes_per_group) * inode_sz;
+  ext2_inode_t in;
 
-  file_size = lower_bits + (((long long)upper_bits) << 32);
+  if (fseek(f, inode_off, SEEK_SET) || fread(&in, sizeof(in), 1, f) != 1) {
+    perror("inode");
+    fclose(f);
+    return 1;
+  }
+  in.i_mode = le16toh(in.i_mode);
 
-  if (fseek(file_system, inode_offset, SEEK_SET) != 0) {
-    perror("fseek to inode failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
+  if (read_inode_data(f, get_size(&sb, &in), in, blk_size) != 0) {
+    perror("data");
+    fclose(f);
+    return 1;
   }
 
-  uint32_t block_pointers[15];
-  for (int i = 0; i < 15; i++) {
-    if (fseek(file_system, 40, SEEK_CUR) != 0) {
-      perror("fseek to inode failed");
-      fclose(file_system);
-      exit(EXIT_FAILURE);
-    }
-    if (fread(&block_pointers[i], 4, 1, file_system) != 1) {
-      perror("fread failed");
-      fclose(file_system);
-      exit(EXIT_FAILURE);
-    }
-    block_pointers[i] = le32toh(block_pointers[i]);
-  }
-
-  for (int i = 0; i < 15; ++i) {
-    if (i < 12)
-      direct_block(block_pointers[i]);
-    else
-      indirect_block(block_pointers[i], i - 11);
-  }
-  fclose(file_system);
+  fclose(f);
   return 0;
 }
