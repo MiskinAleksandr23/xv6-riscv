@@ -1,13 +1,80 @@
-#include <endian.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#define SUPER_SIZE 1024
+#include <endian.h>
+#include <unistd.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <time.h>
+#include <stdbool.h>
 
 uint64_t file_size;
 FILE* file_system;
 uint32_t block_size;
+
+#define SUPER_SIZE 1024
+#define EXT2_BLOCK_SIZE 1024
+#define EXT2_SUPERBLOCK_OFFSET 1024
+#define EXT2_SUPER_MAGIC 0xEF53
+
+typedef struct {
+  uint32_t s_inodes_count;
+  uint32_t s_blocks_count;
+  uint32_t s_r_blocks_count;
+  uint32_t s_free_blocks_count;
+  uint32_t s_free_inodes_count;
+  uint32_t s_first_data_block;
+  uint32_t s_log_block_size;
+  uint32_t s_log_frag_size;
+  uint32_t s_blocks_per_group;
+  uint32_t s_frags_per_group;
+  uint32_t s_inodes_per_group;
+  uint32_t s_mtime;
+  uint32_t s_wtime;
+  uint16_t s_mnt_count;
+  uint16_t s_max_mnt_count;
+  uint16_t s_magic;
+  char s_padding_2[18];
+  uint32_t s_rev_level;
+  char s_padding_1[4];
+  uint32_t s_first_ino;
+  uint16_t s_inode_size;
+  uint16_t s_block_group_nr;
+  uint32_t s_feature_compat;
+  uint32_t s_feature_incompat;
+  uint32_t s_feature_ro_compat;
+  char s_padding[920];
+} __attribute__((packed)) ext2_superblock_t;
+
+typedef struct {
+  uint32_t bg_block_bitmap;
+  uint32_t bg_inode_bitmap;
+  uint32_t bg_inode_table;
+  uint16_t bg_free_blocks_count;
+  uint16_t bg_free_inodes_count;
+  uint16_t bg_used_dirs_count;
+  char bg_padding[14];
+} __attribute__((packed)) ext2_bg_desc_t;
+
+typedef struct {
+  uint16_t i_mode;
+  uint16_t i_uid;
+  uint32_t i_size;
+  uint32_t i_time[4];
+  uint16_t i_gid;
+  uint16_t i_links_count;
+  uint32_t i_blocks;
+  uint32_t i_flags;
+  uint32_t i_osd1;
+  uint32_t i_block[15];
+  uint32_t i_gen;
+  uint32_t i_file_acl;
+  uint32_t i_dir_acl;
+  uint32_t i_faddr;
+  char i_osd2[12];
+} __attribute__((packed)) ext2_inode_t;
 
 void cleanup_failure(FILE* fs, uint8_t* buffer) {
   if (fs) fclose(fs);
@@ -46,51 +113,19 @@ void direct_block(uint32_t block_pointer) {
   file_size -= output_bytes;
   free(block_data);
 }
-void indirect_block(uint32_t block_pointer, int level) {
-  if (!block_pointer) {
-    uint8_t* zeroes = calloc(block_size, 1);
-    if (!zeroes) {
-      perror("calloc failed");
-      exit(EXIT_FAILURE);
-    }
-    for (int i = 0; i < (int) block_size / 4; ++i) {
-      size_t output_bytes = file_size < block_size ? file_size : block_size;
-      fwrite(zeroes, output_bytes, 1, stdout);
-      file_size -= output_bytes;
-      if (file_size <= 0) return;
-    }
-    free(zeroes);
-    return;
-  }
-  uint32_t* blocks = malloc(block_size);
-  if (!blocks) {
-    perror("malloc failed");
-    exit(EXIT_FAILURE);
-  }
 
-  if (fseek(file_system, (int64_t)block_pointer * block_size, SEEK_SET)) {
-    perror("fseek failed");
-    free(blocks);
-    exit(EXIT_FAILURE);
-  }
+int write_zeros(uint32_t block_size, uint64_t* bytes_remaining) {
+  uint32_t to_write = *bytes_remaining > block_size ? block_size : *bytes_remaining;
+  char zero_block[block_size];
+  memset(zero_block, 0, block_size);
 
-  if (fread(blocks, block_size, 1, file_system) != 1) {
-    perror("fread failed");
-    free(blocks);
-    exit(EXIT_FAILURE);
+  if (fwrite(zero_block, 1, to_write, stdout) < to_write) {
+      perror("writing block");
+      return -1;
   }
-
-  for (int i = 0; i < (int)block_size / 4 && file_size > 0; ++i) {
-    uint32_t block = blocks[i];
-    if (block == 0) continue;
-    if (level > 0) {
-      indirect_block(block, level - 1);
-    } else {
-      direct_block(block);
-    }
-  }
-  free(blocks);
-};
+  *bytes_remaining -= to_write;
+  return 0;
+}
 
 int main(int argc, char** argv) {
   if (argc != 3) {
