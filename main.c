@@ -127,6 +127,67 @@ int write_zeros(uint32_t block_size, uint64_t* bytes_remaining) {
   return 0;
 }
 
+static int process_indirect(FILE *file, uint32_t block_ptr, int level, uint32_t blk_size, uint64_t *remaining) {
+    if (!*remaining) return 0;
+
+    uint32_t entries = blk_size / 4;
+    uint32_t total_blocks = entries;
+
+    if (!block_ptr) {
+        for (int i = 1; i < level; i++) total_blocks *= entries;
+        for (uint32_t i = 0; i < total_blocks && *remaining; i++) {
+            if (write_zeros(blk_size, remaining) < 0) return -1;
+        }
+        return 0;
+    }
+
+    uint32_t block_table[entries];
+
+    if (fseek(file, block_ptr * blk_size, SEEK_SET)) {
+        perror("seek failed");
+        fclose(file);
+        return -1;
+    }
+
+    if (fread(block_table, 4, entries, file) != entries) {
+        perror("read failed");
+        return -1;
+    }
+
+    for (uint32_t i = 0; i < entries && *remaining; i++) {
+        if (level == 1) {
+            if (block_table[i]) {
+                if (rw_block(file, block_table[i], blk_size, remaining) < 0) return -1;
+            } else {
+                if (write_zeros(blk_size, remaining) < 0) return -1;
+            }
+        } else {
+            if (process_indirect(file, block_table[i], level - 1, blk_size, remaining) < 0) return -1;
+        }
+    }
+
+    return 0;
+}
+
+
+
+int read_inode_data(FILE* f, uint64_t size, ext2_inode_t inode, uint32_t block_size) {
+    uint64_t rem = size;
+
+    for (int i = 0; i < 12 && rem > 0; i++) {
+        if (rw_block(f, inode.i_block[i], block_size, &rem) < 0)
+            return -1;
+    }
+
+    if (process_indirect(f, inode.i_block[12], 1, block_size, &rem) < 0)
+        return -1;
+    if (process_indirect(f, inode.i_block[13], 2, block_size, &rem) < 0)
+        return -1;
+    if (process_indirect(f, inode.i_block[14], 3, block_size, &rem) < 0)
+        return -1;
+    return 0;
+}
+
 int main(int argc, char** argv) {
   if (argc != 3) {
     perror("format must be: <filesystem> <inode>\n");
