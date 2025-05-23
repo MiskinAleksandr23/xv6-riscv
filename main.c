@@ -82,6 +82,37 @@ void cleanup_failure(FILE* fs, uint8_t* buffer) {
   exit(EXIT_FAILURE);
 }
 
+static int transfer_block_data(FILE *fs_image, uint32_t block_num,
+                            uint32_t block_size, uint64_t *remaining_bytes) {
+  if (block_num == 0 || *remaining_bytes == 0) {
+    return 0;
+  }
+
+  const off_t offset = (off_t)block_num * block_size;
+  if (fseeko(fs_image, offset, SEEK_SET) != 0) {
+    perror("Filesystem seek error");
+    fclose(fs_image);
+    return 1;
+  }
+
+  const size_t transfer_size = (*remaining_bytes > block_size)
+                              ? block_size
+                              : (size_t)*remaining_bytes;
+  uint8_t data_buffer[block_size];
+
+  if (fread(data_buffer, 1, transfer_size, fs_image) != transfer_size) {
+    perror("Data read failure");
+    return -1;
+  }
+
+  if (fwrite(data_buffer, 1, transfer_size, stdout) != transfer_size) {
+    perror("Data write failure");
+    return -1;
+  }
+  *remaining_bytes -= transfer_size;
+  return 0;
+}
+
 void direct_block(uint32_t block_pointer) {
   if (file_size <= 0) return;
 
@@ -157,7 +188,7 @@ static int process_indirect(FILE *file, uint32_t block_ptr, int level, uint32_t 
     for (uint32_t i = 0; i < entries && *remaining; i++) {
         if (level == 1) {
             if (block_table[i]) {
-                if (rw_block(file, block_table[i], blk_size, remaining) < 0) return -1;
+                if (transfer_block_data(file, block_table[i], blk_size, remaining) < 0) return -1;
             } else {
                 if (write_zeros(blk_size, remaining) < 0) return -1;
             }
@@ -169,23 +200,33 @@ static int process_indirect(FILE *file, uint32_t block_ptr, int level, uint32_t 
     return 0;
 }
 
-
-
 int read_inode_data(FILE* f, uint64_t size, ext2_inode_t inode, uint32_t block_size) {
-    uint64_t rem = size;
+  uint64_t rem = size;
 
-    for (int i = 0; i < 12 && rem > 0; i++) {
-        if (rw_block(f, inode.i_block[i], block_size, &rem) < 0)
-            return -1;
-    }
+  for (int i = 0; i < 12 && rem > 0; i++) {
+    if (transfer_block_data(f, inode.i_block[i], block_size, &rem) < 0)
+      return -1;
+  }
 
-    if (process_indirect(f, inode.i_block[12], 1, block_size, &rem) < 0)
-        return -1;
-    if (process_indirect(f, inode.i_block[13], 2, block_size, &rem) < 0)
-        return -1;
-    if (process_indirect(f, inode.i_block[14], 3, block_size, &rem) < 0)
-        return -1;
-    return 0;
+  if (process_indirect(f, inode.i_block[12], 1, block_size, &rem) < 0)
+    return -1;
+  if (process_indirect(f, inode.i_block[13], 2, block_size, &rem) < 0)
+    return -1;
+  if (process_indirect(f, inode.i_block[14], 3, block_size, &rem) < 0)
+    return -1;
+  return 0;
+}
+
+void convert_sb(ext2_superblock_t *sb) {
+  sb->s_inodes_count = le32toh(sb->s_inodes_count);
+  sb->s_blocks_count = le32toh(sb->s_blocks_count);
+  sb->s_first_data_block = le32toh(sb->s_first_data_block);
+  sb->s_blocks_per_group = le32toh(sb->s_blocks_per_group);
+  sb->s_inodes_per_group = le32toh(sb->s_inodes_per_group);
+  sb->s_log_block_size = le32toh(sb->s_log_block_size);
+  sb->s_magic = le16toh(sb->s_magic);
+  sb->s_inode_size = le16toh(sb->s_inode_size);
+  sb->s_rev_level = le32toh(sb->s_rev_level);
 }
 
 int main(int argc, char** argv) {
@@ -200,17 +241,20 @@ int main(int argc, char** argv) {
     exit(EXIT_FAILURE);
   }
 
-  uint32_t log_block_size, blocks_per_group, inode_per_group, inode_size;
-  if (fseek(file_system, SUPER_SIZE + 24, SEEK_SET) != 0) {
-    perror("fseek failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
+  if (fseek(file_system, EXT2_SUPERBLOCK_OFFSET, SEEK_SET) != 0) {
+      perror("error: fseek superblock");
+      fclose(file_system);
+      return 1;
   }
-  if (fread(&log_block_size, 4, 1, file_system) != 1) {
-    perror("fread failed");
-    fclose(file_system);
-    exit(EXIT_FAILURE);
+  ext2_superblock_t sb;
+  if (fread(&sb, sizeof(ext2_superblock_t), 1, file_system) != 1) {
+      perror("error: fread superblock");
+      fclose(file_system);
+      return 1;
   }
+
+  convert_sb(&sb);
+
   log_block_size = le32toh(log_block_size);
   block_size = 1024 << log_block_size;
   uint32_t descriptor_table = (block_size == 1024) ? 2 : 1;
