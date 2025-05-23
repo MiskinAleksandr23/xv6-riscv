@@ -31,6 +31,7 @@ FILE3_HASH=$(sha512sum mnt/file3.bin | awk '{print $1}')
 echo "Unmount image"
 sudo umount mnt
 
+echo "Extractions"
 ./main ext2.img "$FILE1_INODE" > file1_extracted.txt
 ./main ext2.img "$FILE2_INODE" > file2_extracted.bin
 ./main ext2.img "$FILE3_INODE" > file3_extracted.bin
